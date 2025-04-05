@@ -5,6 +5,7 @@ from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 import torch.optim as optim
 import model_cdnn  # 你提供的模型文件
+import model_vgg
 from sklearn.metrics import accuracy_score, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -171,7 +172,7 @@ def main():
     test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model_cdnn.TwelveLayerCNN().to(device)
+    model = model_vgg.VGG().to(device)
 
     criterion = nn.KLDivLoss(reduction='batchmean')
     softmax = nn.LogSoftmax(dim=1)
