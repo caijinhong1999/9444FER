@@ -15,7 +15,7 @@ class NineLayerCNN(nn.Module):
         self.flatten = nn.Flatten()
         self.fc1 = nn.Linear(128 * 6 * 6, 128)
         self.relu4 = nn.ReLU()
-        self.fc2 = nn.Linear(128, 10)
+        self.fc2 = nn.Linear(128, 8)
 
     def forward(self, x):
         x = self.pool1(self.relu1(self.conv1(x)))
@@ -53,7 +53,7 @@ class TwelveLayerCNN(nn.Module):
         self.relu5 = nn.ReLU()
         self.fc2 = nn.Linear(256, 128)
         self.relu6 = nn.ReLU()
-        self.fc3 = nn.Linear(128, 10)
+        self.fc3 = nn.Linear(128, 8)
 
     def forward(self, x):
         x = self.pool1(self.relu1(self.conv1(x)))
