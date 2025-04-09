@@ -109,9 +109,9 @@ class ResNet(nn.Module):
 
 
 # Create 10 layers Residual Network
-class ResNet(nn.Module):
+class ResNetEX(nn.Module):
     def __init__(self, classes_num=10):
-        super(ResNet, self).__init__()
+        super(ResNetEX, self).__init__()
 
         # preprocess layer
         self.preprocess = self._make_preprocess_layer()
