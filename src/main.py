@@ -57,6 +57,7 @@ class FERPlusDataset(Dataset):
         image = image.astype(np.float32) / 255.0
         image = torch.tensor(image).unsqueeze(0)
 
+
         label = row[self.label_keys].values.astype(np.float32)
         label = label / label.sum()  # soft label 归一化
         label = torch.tensor(label)
@@ -207,8 +208,9 @@ def main():
         print(f"Epoch [{epoch + 1}/{num_epochs}] Avg KL Loss: {avg_loss:.4f}")
         #print(f"Epoch [{epoch+1}/{num_epochs}] Loss: {running_loss:.4f}")
 
-        # 每轮都在验证集上评估
-        evaluate_model(model, val_loader, device, name="Validation")
+        # 重复输出了validation，可以删掉
+        # # 每轮都在验证集上评估
+        # evaluate_model(model, val_loader, device, name="Validation")
 
     # 训练完成后在测试集评估
     evaluate_model(model, test_loader, device, name="Test")
