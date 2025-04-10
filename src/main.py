@@ -208,6 +208,7 @@ def main():
     softmax = nn.LogSoftmax(dim=1)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
+    #预设存储的变量，用于画图
     train_losses = []
     train_kls = []
     val_kls = []
@@ -216,6 +217,7 @@ def main():
     train_mses = []
     val_mses = []
 
+    #设定epoch
     num_epochs = 10
     for epoch in range(num_epochs):
         model.train()
@@ -230,12 +232,16 @@ def main():
             running_loss += loss.item()
         avg_loss = running_loss / len(train_loader)
 
-        #train_loss
-        train_losses.append(avg_loss)
+        # 用每轮平均loss表示loss，输出平均loss
+        print(f"Epoch [{epoch + 1}/{num_epochs}] Avg Training KL Loss: {avg_loss:.4f}")
 
-        #获得kl, expect acc, mse
+        #获得kl, expect acc, mse, 输出结果
         train_kl, train_acc, train_mse = evaluate_model(model, train_loader, device, name="Train")
         val_kl, val_acc, val_mse = evaluate_model(model, val_loader, device, name="Validation")
+
+
+        #train_loss for training
+        train_losses.append(avg_loss)
 
         #kl for train and val
         train_kls.append(train_kl)
@@ -249,8 +255,6 @@ def main():
         train_mses.append(train_mse)
         val_mses.append(val_mse)
 
-        #用每轮平均loss表示loss
-        print(f"Epoch [{epoch + 1}/{num_epochs}] Avg KL Loss: {avg_loss:.4f}")
         #print(f"Epoch [{epoch+1}/{num_epochs}] Loss: {running_loss:.4f}")
 
         # 重复输出了validation，可以删掉
