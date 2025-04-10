@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import torchvision.transforms as transforms
 import model_cdnn as model_cdnn;
+import model_vgg_templete as model_vgg_templete;
+
 import os
 
 # 将 fer2013.csv 转换为图片保存
@@ -138,15 +140,20 @@ def main():
     # 01. 调用cdnn9层神经网络
     # model = model_cdnn.NineLayerCNN().to(device)
     # 02. 调用cdnn12层神经网络
-    model = model_cdnn.TwelveLayerCNN().to(device)
+    # model = model_cdnn.TwelveLayerCNN().to(device)
 
+    model = model_vgg_templete.VGG13_PyTorch(10).to(device)
+
+
+    # criterion = nn.BCEWithLogitsLoss()
     criterion = nn.CrossEntropyLoss()
-    learning_rate = 0.0001
+    # learning_rate = 0.0001
+    learning_rate = 0.0001 # vgg
     # 正则化：添加 L2 正则化（权重衰减）
     weight_decay = 0.0001
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
-    epochs = 10
+    epochs = 50
     train_losses = []
     valid_losses = []
     train_accuracies = []
