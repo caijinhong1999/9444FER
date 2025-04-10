@@ -45,7 +45,7 @@ class FERPlusDataset(Dataset):
         self.data = self.data[(self.data['NF'] == 0) & (self.data['unknown'] <= 1)]
 
         self.label_keys = ['neutral', 'happiness', 'surprise', 'sadness',
-                           'anger', 'disgust', 'fear', 'contempt']
+                           'anger', 'disgust', 'fear', 'contempt', 'unknown']   #9种class
         self.transform = transform
 
     def __len__(self):
@@ -99,8 +99,12 @@ def evaluate_model(model, data_loader, device, name="Validation"):
 
             # KL散度
             kl = kl_loss_fn(log_probs, labels)
-            # Expected Accuracy（分布点积平均值）
-            expected_acc = torch.sum(probs * labels, dim=1).mean()
+
+            # 归一化的Expected Accuracy（分布点积平均值）
+            numerator = torch.sum(probs * labels, dim=1)
+            denominator = torch.sum(labels * labels, dim=1) + 1e-10  # 避免除零
+            expected_acc = (numerator / denominator).mean()
+
             # 均方误差
             mse = mse_loss_fn(probs, labels)
 
@@ -121,45 +125,70 @@ def evaluate_model(model, data_loader, device, name="Validation"):
 
     return avg_kl, avg_expected_acc, avg_mse
 
-def plot_training_curves(train_losses, val_kls, val_expected_accuracies, val_mses):
+def plot_training_curves(train_losses,
+                         train_kls, val_kls,
+                         train_expected_accuracies, val_expected_accuracies,
+                         train_mses, val_mses):
     epochs = list(range(1, len(train_losses)+1))
 
-    plt.figure(figsize=(14, 10))
-
-    # 1. 训练损失（KL Loss）
-    plt.subplot(2, 2, 1)
-    plt.plot(epochs, train_losses, label='Train KL Loss')
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.title("Training Loss (KL)")
-    plt.grid(True)
-
-    # 2. 验证 KL Divergence
-    plt.subplot(2, 2, 2)
-    plt.plot(epochs, val_kls, label='Val KL Divergence', color='orange')
+    # 1. Train KL Loss vs Val KL Loss
+    plt.figure(figsize=(8, 6))
+    plt.plot(epochs, train_kls, label='Train KL', color='blue')
+    plt.plot(epochs, val_kls, label='Val KL', color='orange')
     plt.xlabel("Epoch")
     plt.ylabel("KL Divergence")
-    plt.title("Validation KL Divergence")
+    plt.title("KL Divergence (Train vs Val)")
+    plt.legend()
     plt.grid(True)
+    plt.show()
 
-    # 3. 验证 Expected Accuracy
-    plt.subplot(2, 2, 3)
+    # 2. Expected Accuracy
+    plt.figure(figsize=(8, 6))
+    plt.plot(epochs, train_expected_accuracies, label='Train Expected Accuracy', color='blue')
     plt.plot(epochs, val_expected_accuracies, label='Val Expected Accuracy', color='green')
     plt.xlabel("Epoch")
     plt.ylabel("Expected Accuracy")
-    plt.title("Validation Expected Accuracy")
+    plt.title("Expected Accuracy (Train vs Val)")
+    plt.legend()
     plt.grid(True)
+    plt.show()
 
-    # 4. 验证 MSE
-    plt.subplot(2, 2, 4)
+    # 3. MSE
+    plt.figure(figsize=(8, 6))
+    plt.plot(epochs, train_mses, label='Train MSE', color='blue')
     plt.plot(epochs, val_mses, label='Val MSE', color='red')
     plt.xlabel("Epoch")
     plt.ylabel("Mean Squared Error")
-    plt.title("Validation MSE")
+    plt.title("MSE (Train vs Val)")
+    plt.legend()
     plt.grid(True)
-
-    plt.tight_layout()
     plt.show()
+
+    # 4. Raw training KL loss (if different from train_kl)
+    plt.figure(figsize=(8, 6))
+    plt.plot(epochs, train_losses, label='Raw Training KL Loss (from optimizer)', color='purple')
+    plt.xlabel("Epoch")
+    plt.ylabel("KL Loss")
+    plt.title("Training KL Loss (from backprop)")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+def plot_test_curve(test_kl, test_acc, test_mse):
+    metrics = ['KL Divergence', 'Expected Accuracy', 'MSE']
+    values = [test_kl, test_acc, test_mse]
+
+    plt.figure(figsize=(8, 5))
+    bars = plt.bar(metrics, values)
+    for bar in bars:
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2.0, yval + 0.005, f'{yval:.4f}', ha='center', va='bottom')
+
+    plt.title("Test Set Evaluation Metrics")
+    plt.ylim(0, max(values)*1.2)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.show()
+
 
 # 主函数
 def main():
@@ -180,8 +209,11 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
     train_losses = []
+    train_kls = []
     val_kls = []
+    train_expected_accuracies = []
     val_expected_accuracies = []
+    train_mses = []
     val_mses = []
 
     num_epochs = 10
@@ -198,10 +230,23 @@ def main():
             running_loss += loss.item()
         avg_loss = running_loss / len(train_loader)
 
+        #train_loss
         train_losses.append(avg_loss)
+
+        #获得kl, expect acc, mse
+        train_kl, train_acc, train_mse = evaluate_model(model, train_loader, device, name="Train")
         val_kl, val_acc, val_mse = evaluate_model(model, val_loader, device, name="Validation")
+
+        #kl for train and val
+        train_kls.append(train_kl)
         val_kls.append(val_kl)
+
+        #expected_accuracy for train and val
+        train_expected_accuracies.append(train_acc)
         val_expected_accuracies.append(val_acc)
+
+        #mse for train and val
+        train_mses.append(train_mse)
         val_mses.append(val_mse)
 
         #用每轮平均loss表示loss
@@ -213,9 +258,13 @@ def main():
         # evaluate_model(model, val_loader, device, name="Validation")
 
     # 训练完成后在测试集评估
-    evaluate_model(model, test_loader, device, name="Test")
+    test_kl, test_acc, test_mse = evaluate_model(model, test_loader, device, name="Test")
 
-    plot_training_curves(train_losses, val_kls, val_expected_accuracies, val_mses)
+    #绘制train,validation,test的图
+    plot_training_curves(train_losses, train_kls, val_kls,
+                         train_expected_accuracies, val_expected_accuracies,
+                         train_mses, val_mses)
+    plot_test_curve(test_kl, test_acc, test_mse)
 
 if __name__ == "__main__":
     main()

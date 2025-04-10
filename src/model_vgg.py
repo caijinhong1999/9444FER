@@ -1,10 +1,16 @@
 import torchvision.models as models
 import torch.nn as nn
+from torchvision.models import VGG16_BN_Weights
 
 class VGG(nn.Module):
-    def __init__(self, num_classes=8):  # FER+ 有 8 个情绪类别
+    def __init__(self, num_classes=9):  # FER+ 有 9 个情绪类别
         super(VGG, self).__init__()
-        self.base = models.vgg16_bn(pretrained=True)  # 加载 VGG16 带 BN
+
+        #下面这个写法是旧写法，这样写会报warning
+        #self.base = models.vgg16_bn(pretrained=True)  # 加载 VGG16 带 BN
+
+        #换成这种写法，加载 VGG16 带 BN
+        self.base = models.vgg16_bn(weights=models.VGG16_BN_Weights.DEFAULT)
         self.base.features[0] = nn.Conv2d(1, 64, kernel_size=3, padding=1)  # 替换第一层适应灰度图
 
         # 替换 classifier
