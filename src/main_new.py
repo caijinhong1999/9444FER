@@ -200,16 +200,19 @@ def main():
     val_dataset = FERPlusDataset(fer_path, usage='PublicTest')
     test_dataset = FERPlusDataset(fer_path, usage='PrivateTest')
 
-    train_loader = DataLoader(train_dataset, batch_size=ResNet().batch_size, shuffle=True)    # ResNet_CBAM()
-    val_loader = DataLoader(val_dataset, batch_size=ResNet().batch_size, shuffle=False)       # ResNet_CBAM()
-    test_loader = DataLoader(test_dataset, batch_size=ResNet().batch_size, shuffle=False)     # ResNet_CBAM()
+    train_loader = DataLoader(train_dataset, batch_size=model_resnet.ResNet().batch_size, shuffle=True)    # ResNet_CBAM()
+    val_loader = DataLoader(val_dataset, batch_size=model_resnet.ResNet().batch_size, shuffle=False)       # ResNet_CBAM()
+    test_loader = DataLoader(test_dataset, batch_size=model_resnet.ResNet().batch_size, shuffle=False)     # ResNet_CBAM()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model_vgg.VGG().to(device)
+    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    # 该调用形式只在ipynb文件中验证运行有效(见ResNet_new.ipynb)，py文件中尚未被验证
+    model = model_resnet.ResNet().to(device)
+    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     criterion = nn.KLDivLoss(reduction='batchmean')
     softmax = nn.LogSoftmax(dim=1)
-    optimizer = optim.Adam(model.parameters(), lr=ResNet().lr)    # ResNet_CBAM()
+    optimizer = optim.Adam(model.parameters(), lr=model_resnet.ResNet().lr)    # ResNet_CBAM()
 
     #预设存储的变量，用于画图
     train_losses = []
@@ -221,7 +224,7 @@ def main():
     val_mses = []
 
     #设定epoch
-    num_epochs = ResNet().epoch    # ResNet_CBAM()
+    num_epochs = model_resnet.ResNet().epoch    # ResNet_CBAM()
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
