@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import torchvision.transforms as transforms
 import model_cdnn as model_cdnn;
-import model_vgg_templete as model_vgg_templete;
 
 import os
 
@@ -109,6 +108,13 @@ def evaluate_model(model, dataloader, criterion, device, is_final=False):
         return accuracy, precision, recall, f1, conf_matrix
     return avg_loss, accuracy
 
+
+def init_weights(m):
+    if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+        nn.init.kaiming_normal_(m.weight)
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
+
 # 主函数
 def main():
     fer_path = '../fer2013.csv'
@@ -138,11 +144,13 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # 01. 调用cdnn9层神经网络
-    # model = model_cdnn.NineLayerCNN().to(device)
+    # model = model_cdnn.NineLayerCNN(9).to(device)
     # 02. 调用cdnn12层神经网络
-    # model = model_cdnn.TwelveLayerCNN().to(device)
+    # model = model_cdnn.TwelveLayerCNN(9).to(device)
 
-    model = model_vgg_templete.VGG13_PyTorch(10).to(device)
+
+    model = model_cdnn.VGG13_PyTorch(9).to(device)
+    model.apply(init_weights) # 权重初始化
 
 
     # criterion = nn.BCEWithLogitsLoss()
