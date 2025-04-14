@@ -2,8 +2,11 @@ import torch
 import torch.nn as nn
 # 构建 9 层卷积神经网络
 class NineLayerCNN(nn.Module):
-    def __init__(self, num_classes):
+    def __init__(self, num_classes=9):
         super(NineLayerCNN, self).__init__()
+        self.batch_size = 64
+        self.lr = 0.001
+        self.epoch = 10
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(32)  # ✅ BN 加在卷积后
         self.relu1 = nn.ReLU()
@@ -37,8 +40,11 @@ class NineLayerCNN(nn.Module):
 
 # 构建 12 层卷积神经网络
 class TwelveLayerCNN(nn.Module):
-    def __init__(self, num_classes):
+    def __init__(self, num_classes=9):
         super(TwelveLayerCNN, self).__init__()
+        self.batch_size = 64
+        self.lr = 0.001
+        self.epoch = 10
         # 第一层卷积块
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(32)
@@ -98,8 +104,11 @@ class VGG13_PyTorch(nn.Module):
     '''
     A VGG13 like model (https://arxiv.org/pdf/1409.1556.pdf) tweaked for emotion data.
     '''
-    def __init__(self, num_classes):
+    def __init__(self, num_classes=9):
         super(VGG13_PyTorch, self).__init__()
+        self.batch_size = 64
+        self.lr = 0.001
+        self.epoch = 10
         self.learning_rate = 0.05
         self.input_width = 48
         self.input_height = 48
