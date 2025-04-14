@@ -1,3 +1,15 @@
+import model_resnet
+from PIL import Image
+import os
+import seaborn as sns
+import pandas as pd
+import numpy as np
+import torch
+from torch.utils.data import Dataset, DataLoader
+import torch.nn as nn
+import torch.optim as optim
+from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import torch
@@ -7,9 +19,25 @@ import torch.optim as optim
 import model_cdnn  # 你提供的模型文件
 #import model_vgg
 import model_efficientnet
+import model_vgg
+import model_resnet
 from sklearn.metrics import accuracy_score, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
+import torchvision.models as models
+from torchvision.models.resnet import ResNet, BasicBlock
+
+# 将 fer2013.csv 转换为图片保存
+def save_images_as_png(fer_df, output_dir):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    for i in range(len(fer_df)):
+        pixel_str = fer_df['pixels'][i]
+        pixel_list = [int(pixel) for pixel in pixel_str.split()]
+        image = np.array(pixel_list, dtype=np.uint8).reshape(48, 48)
+        img = Image.fromarray(image)
+        img_path = os.path.join(output_dir, f"image_{i}.png")
+        img.save(img_path)
 
 # 自定义数据集类
 class FERPlusDataset(Dataset):
@@ -174,17 +202,28 @@ def main():
     val_dataset = FERPlusDataset(fer_path, usage='PublicTest')
     test_dataset = FERPlusDataset(fer_path, usage='PrivateTest')
 
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+    # train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+    # val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
+    # test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=model_resnet.ResNet().batch_size, shuffle=True)    # ResNet_CBAM()
+    val_loader = DataLoader(val_dataset, batch_size=model_resnet.ResNet().batch_size, shuffle=False)       # ResNet_CBAM()
+    test_loader = DataLoader(test_dataset, batch_size=model_resnet.ResNet().batch_size, shuffle=False)     # ResNet_CBAM()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     #model = model_vgg.VGG().to(device)
     model = model_efficientnet.EfficientNetSoftLabel().to(device)
+    # model = model_vgg.VGG().to(device)
 
+    model = model_resnet.ResNet().to(device)
+
+
+
+    # criterion = nn.KLDivLoss(reduction='batchmean')
+    # softmax = nn.LogSoftmax(dim=1)
+    # optimizer = optim.Adam(model.parameters(), lr=0.001)
     criterion = nn.KLDivLoss(reduction='batchmean')
     softmax = nn.LogSoftmax(dim=1)
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    optimizer = optim.Adam(model.parameters(), lr=model_resnet.ResNet().lr)    # ResNet_CBAM()
 
     #预设存储的变量，用于画图
     train_losses = []
@@ -196,7 +235,10 @@ def main():
     val_mses = []
 
     #设定epoch
-    num_epochs = 10
+    # num_epochs = 10
+    #设定epoch
+    num_epochs = model_resnet.ResNet().epoch    # ResNet_CBAM()
+
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
