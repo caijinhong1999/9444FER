@@ -1,18 +1,15 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import model_cdnn  # 你提供的模型文件
-import model_vgg
 import model_resnet
-from sklearn.metrics import accuracy_score, confusion_matrix
-import matplotlib.pyplot as plt
 from PIL import Image
-import torchvision.transforms as transforms
-import model_cdnn as model_cdnn;
 import os
 import seaborn as sns
-import torchvision.models as models
-from torchvision.models.resnet import ResNet, BasicBlock
+import pandas as pd
+import numpy as np
+import torch
+from torch.utils.data import Dataset, DataLoader
+import torch.nn as nn
+import torch.optim as optim
+from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import torch
@@ -20,8 +17,13 @@ from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 import torch.optim as optim
 import model_cdnn  # 你提供的模型文件
+import model_vgg
+import model_resnet
 from sklearn.metrics import accuracy_score, confusion_matrix
 import matplotlib.pyplot as plt
+import seaborn as sns
+import torchvision.models as models
+from torchvision.models.resnet import ResNet, BasicBlock
 
 # 将 fer2013.csv 转换为图片保存
 def save_images_as_png(fer_df, output_dir):
@@ -50,11 +52,19 @@ class FERPlusDataset(Dataset):
         self.transform = transform
 
     def __len__(self):
-        return len(self.images)
+        return len(self.data)
 
     def __getitem__(self, idx):
-        image = self.images[idx]
-        label = self.labels[idx]
+        row = self.data.iloc[idx]
+        image = np.fromstring(row['pixels'], dtype=int, sep=' ').astype(np.uint8).reshape(48, 48)
+        image = image.astype(np.float32) / 255.0
+        image = torch.tensor(image).unsqueeze(0)
+
+
+        label = row[self.label_keys].values.astype(np.float32)
+        label = label / label.sum()  # soft label 归一化
+        label = torch.tensor(label)
+
         if self.transform:
             image = self.transform(image)
 

@@ -1,3 +1,8 @@
+import torch
+import torch.nn as nn
+import torchvision.models as models
+from torchvision.models.resnet import ResNet, BasicBlock
+
 # ResNet18
 class ResNet(nn.Module):
     def __init__(self, classes_num=9):
