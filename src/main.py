@@ -1,17 +1,29 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
+import model_resnet
+from PIL import Image
+import os
+import seaborn as sns
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+import torch
+from torch.utils.data import Dataset, DataLoader
+import torch.nn as nn
+import torch.optim as optim
+from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
-from PIL import Image
-import torchvision.transforms as transforms
-import model_cdnn as model_cdnn;
-
-import os
+import pandas as pd
+import numpy as np
+import torch
+from torch.utils.data import Dataset, DataLoader
+import torch.nn as nn
+import torch.optim as optim
+import model_cdnn  # 你提供的模型文件
+import model_vgg
+import model_resnet
+from sklearn.metrics import accuracy_score, confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
+import torchvision.models as models
+from torchvision.models.resnet import ResNet, BasicBlock
 
 # 将 fer2013.csv 转换为图片保存
 def save_images_as_png(fer_df, output_dir):
@@ -27,86 +39,159 @@ def save_images_as_png(fer_df, output_dir):
 
 # 自定义数据集类
 class FERPlusDataset(Dataset):
-    def __init__(self, fer_df, ferplus_df, data_type='Training', transform=None):
-        self.fer_df = fer_df
-        self.ferplus_df = ferplus_df
-        self.data_type = data_type
+    def __init__(self, csv_file, usage='Training', transform=None):
+        self.data = pd.read_csv(csv_file)
+        self.data.columns = self.data.columns.str.strip()  # 清除列名空格
+        self.data = self.data[self.data['Usage'] == usage]
+
+        # 排除 unknown 和 NF 分布不为 0 的行（可选）
+        self.data = self.data[(self.data['NF'] == 0) & (self.data['unknown'] <= 1)]
+
+        self.label_keys = ['neutral', 'happiness', 'surprise', 'sadness',
+                           'anger', 'disgust', 'fear', 'contempt', 'unknown']   #9种class
         self.transform = transform
-        self.images, self.labels = self._load_and_preprocess_data()
-
-    def _load_and_preprocess_data(self):
-        images = []
-        labels = []
-        usage = self.ferplus_df['Usage']
-
-        for i in range(len(self.fer_df)):
-            if usage[i] == self.data_type:
-                pixel_str = self.fer_df['pixels'][i]
-                pixel_list = [int(pixel) for pixel in pixel_str.split()]
-                image = np.array(pixel_list, dtype=np.uint8).reshape(48, 48)
-                images.append(image)
-
-                label = np.argmax([int(x) for x in self.ferplus_df.iloc[i, 2:10]])
-                labels.append(label)
-
-        images = np.array(images)
-        labels = np.array(labels)
-        images = images / 255.0
-
-        return images, labels
 
     def __len__(self):
-        return len(self.images)
+        return len(self.data)
 
     def __getitem__(self, idx):
-        image = self.images[idx]
-        label = self.labels[idx]
+        row = self.data.iloc[idx]
+        image = np.fromstring(row['pixels'], dtype=int, sep=' ').astype(np.uint8).reshape(48, 48)
+        image = image.astype(np.float32) / 255.0
+        image = torch.tensor(image).unsqueeze(0)
+
+
+        label = row[self.label_keys].values.astype(np.float32)
+        label = label / label.sum()  # soft label 归一化
+        label = torch.tensor(label)
+
         if self.transform:
-            image = Image.fromarray((image * 255).astype(np.uint8))
             image = self.transform(image)
-        else:
-            image = torch.tensor(image, dtype=torch.float32).unsqueeze(0)
-        label = torch.tensor(label, dtype=torch.long)
+
         return image, label
 
-# 构建 9 层卷积神经网络
+
+# 混淆矩阵可视化
+def plot_confusion_matrix(y_true, y_pred, title='Confusion Matrix'):
+    cm = confusion_matrix(y_true, y_pred)
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.title(title)
+    plt.show()
 
 # 评估模型
-def evaluate_model(model, dataloader, criterion, device, is_final=False):
+def evaluate_model(model, data_loader, device, name="Validation"):
     model.eval()
-    all_labels = []
-    all_preds = []
-    total_loss = 0
+    kl_loss_fn = nn.KLDivLoss(reduction='batchmean')
+    mse_loss_fn = nn.MSELoss(reduction='mean')
+
+    total_kl = 0.0
+    total_expected_acc = 0.0
+    total_mse = 0.0
+    num_samples = 0
 
     with torch.no_grad():
-        for images, labels in dataloader:
+        for images, labels in data_loader:
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
-            loss = criterion(outputs, labels)
-            total_loss += loss.item()
 
-            _, preds = torch.max(outputs, 1)
-            all_labels.extend(labels.cpu().tolist())
-            all_preds.extend(preds.cpu().tolist())
+            log_probs = torch.log_softmax(outputs, dim=1)
+            probs = torch.softmax(outputs, dim=1)
 
-    avg_loss = total_loss / len(dataloader)
-    accuracy = accuracy_score(all_labels, all_preds)
+            # KL散度
+            kl = kl_loss_fn(log_probs, labels)
 
-    if is_final:
-        precision = precision_score(all_labels, all_preds, average='weighted', zero_division=0)
-        recall = recall_score(all_labels, all_preds, average='weighted')
-        f1 = f1_score(all_labels, all_preds, average='weighted')
-        conf_matrix = confusion_matrix(all_labels, all_preds)
+            # 归一化的Expected Accuracy（分布点积平均值）
+            numerator = torch.sum(probs * labels, dim=1)
+            denominator = torch.sum(labels * labels, dim=1) + 1e-10  # 避免除零
+            expected_acc = (numerator / denominator).mean()
 
-        print(f"Accuracy: {accuracy}")
-        print(f"Precision: {precision}")
-        print(f"Recall: {recall}")
-        print(f"F1 - score: {f1}")
-        print("Confusion Matrix:")
-        print(conf_matrix)
+            # 均方误差
+            mse = mse_loss_fn(probs, labels)
 
-        return accuracy, precision, recall, f1, conf_matrix
-    return avg_loss, accuracy
+            batch_size = images.size(0)
+            total_kl += kl.item() * batch_size
+            total_expected_acc += expected_acc.item() * batch_size
+            total_mse += mse.item() * batch_size
+            num_samples += batch_size
+
+    avg_kl = total_kl / num_samples
+    avg_expected_acc = total_expected_acc / num_samples
+    avg_mse = total_mse / num_samples
+
+    print(f"\n{name} Evaluation Metrics:")
+    print(f"  KL Divergence:      {avg_kl:.4f}")
+    print(f"  Expected Accuracy:  {avg_expected_acc:.4f}")
+    print(f"  Mean Squared Error: {avg_mse:.4f}\n")
+
+    return avg_kl, avg_expected_acc, avg_mse
+
+def plot_training_curves(train_losses,
+                         train_kls, val_kls,
+                         train_expected_accuracies, val_expected_accuracies,
+                         train_mses, val_mses):
+    epochs = list(range(1, len(train_losses)+1))
+
+    # 1. Train KL Loss vs Val KL Loss
+    plt.figure(figsize=(8, 6))
+    plt.plot(epochs, train_kls, label='Train KL', color='blue')
+    plt.plot(epochs, val_kls, label='Val KL', color='orange')
+    plt.xlabel("Epoch")
+    plt.ylabel("KL Divergence")
+    plt.title("KL Divergence (Train vs Val)")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    # 2. Expected Accuracy
+    plt.figure(figsize=(8, 6))
+    plt.plot(epochs, train_expected_accuracies, label='Train Expected Accuracy', color='blue')
+    plt.plot(epochs, val_expected_accuracies, label='Val Expected Accuracy', color='green')
+    plt.xlabel("Epoch")
+    plt.ylabel("Expected Accuracy")
+    plt.title("Expected Accuracy (Train vs Val)")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    # 3. MSE
+    plt.figure(figsize=(8, 6))
+    plt.plot(epochs, train_mses, label='Train MSE', color='blue')
+    plt.plot(epochs, val_mses, label='Val MSE', color='red')
+    plt.xlabel("Epoch")
+    plt.ylabel("Mean Squared Error")
+    plt.title("MSE (Train vs Val)")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    # 4. Raw training KL loss (if different from train_kl)
+    plt.figure(figsize=(8, 6))
+    plt.plot(epochs, train_losses, label='Raw Training KL Loss (from optimizer)', color='purple')
+    plt.xlabel("Epoch")
+    plt.ylabel("KL Loss")
+    plt.title("Training KL Loss (from backprop)")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+def plot_test_curve(test_kl, test_acc, test_mse):
+    metrics = ['KL Divergence', 'Expected Accuracy', 'MSE']
+    values = [test_kl, test_acc, test_mse]
+
+    plt.figure(figsize=(8, 5))
+    bars = plt.bar(metrics, values)
+    for bar in bars:
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2.0, yval + 0.005, f'{yval:.4f}', ha='center', va='bottom')
+
+    plt.title("Test Set Evaluation Metrics")
+    plt.ylim(0, max(values)*1.2)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.show()
+
 
 
 def init_weights(m):
@@ -117,32 +202,23 @@ def init_weights(m):
 
 # 主函数
 def main():
-    fer_path = '../fer2013.csv'
-    ferplus_path = '../fer2013new.csv'
-    fer_df = pd.read_csv(fer_path)
-    ferplus_df = pd.read_csv(ferplus_path)
+    fer_path = '../data/fer2013_softlabel.csv'  # 包含soft labels的csv
+    train_dataset = FERPlusDataset(fer_path, usage='Training')
+    val_dataset = FERPlusDataset(fer_path, usage='PublicTest')
+    test_dataset = FERPlusDataset(fer_path, usage='PrivateTest')
 
-    # 将 fer2013.csv 转换为图片保存
-    output_dir = "../img"
-    save_images_as_png(fer_df, output_dir)
+    # train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+    # val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
+    # test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=model_resnet.ResNet().batch_size, shuffle=True)    # ResNet_CBAM()
+    val_loader = DataLoader(val_dataset, batch_size=model_resnet.ResNet().batch_size, shuffle=False)       # ResNet_CBAM()
+    test_loader = DataLoader(test_dataset, batch_size=model_resnet.ResNet().batch_size, shuffle=False)     # ResNet_CBAM()
 
-    # 数据增强
-    train_transform = transforms.Compose([
-        transforms.RandomRotation(10),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor()
-    ])
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # model = model_vgg.VGG().to(device)
 
-    train_dataset = FERPlusDataset(fer_df, ferplus_df, data_type='Training', transform=train_transform)
-    valid_dataset = FERPlusDataset(fer_df, ferplus_df, data_type='PrivateTest')
-    test_dataset = FERPlusDataset(fer_df, ferplus_df, data_type='PublicTest')
+    # model = model_resnet.ResNet().to(device)
 
-    batch_size = 32
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # 01. 调用cdnn9层神经网络
     # model = model_cdnn.NineLayerCNN(9).to(device)
     # 02. 调用cdnn12层神经网络
@@ -153,84 +229,78 @@ def main():
     model.apply(init_weights) # 权重初始化
 
 
-    # criterion = nn.BCEWithLogitsLoss()
-    criterion = nn.CrossEntropyLoss()
-    # learning_rate = 0.0001
-    learning_rate = 0.0001 # vgg
-    # 正则化：添加 L2 正则化（权重衰减）
-    weight_decay = 0.0001
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
-    epochs = 50
+# criterion = nn.KLDivLoss(reduction='batchmean')
+    # softmax = nn.LogSoftmax(dim=1)
+    # optimizer = optim.Adam(model.parameters(), lr=0.001)
+    criterion = nn.KLDivLoss(reduction='batchmean')
+    softmax = nn.LogSoftmax(dim=1)
+    optimizer = optim.Adam(model.parameters(), lr=model_resnet.ResNet().lr)    # ResNet_CBAM()
+
+    #预设存储的变量，用于画图
     train_losses = []
-    valid_losses = []
-    train_accuracies = []
-    valid_accuracies = []
+    train_kls = []
+    val_kls = []
+    train_expected_accuracies = []
+    val_expected_accuracies = []
+    train_mses = []
+    val_mses = []
 
-    for epoch in range(epochs):
+    #设定epoch
+    # num_epochs = 10
+    #设定epoch
+    num_epochs = model_resnet.ResNet().epoch    # ResNet_CBAM()
+
+    for epoch in range(num_epochs):
         model.train()
-        train_loss = 0
-        train_preds = []
-        train_labels = []
-
-        for i, (images, labels) in enumerate(train_dataloader):
+        running_loss = 0.0
+        for images, labels in train_loader:
             images, labels = images.to(device), labels.to(device)
-
             optimizer.zero_grad()
             outputs = model(images)
-            loss = criterion(outputs, labels)
+            loss = criterion(softmax(outputs), labels)
             loss.backward()
             optimizer.step()
+            running_loss += loss.item()
+        avg_loss = running_loss / len(train_loader)
 
-            train_loss += loss.item()
+        # 用每轮平均loss表示loss，输出平均loss
+        print(f"Epoch [{epoch + 1}/{num_epochs}] Avg Training KL Loss: {avg_loss:.4f}")
 
-            _, preds = torch.max(outputs, 1)
-            train_preds.extend(preds.cpu().tolist())
-            train_labels.extend(labels.cpu().tolist())
+        #获得kl, expect acc, mse, 输出结果
+        train_kl, train_acc, train_mse = evaluate_model(model, train_loader, device, name="Train")
+        val_kl, val_acc, val_mse = evaluate_model(model, val_loader, device, name="Validation")
 
-        train_loss /= len(train_dataloader)
-        train_losses.append(train_loss)
-        train_accuracy = accuracy_score(train_labels, train_preds)
-        train_accuracies.append(train_accuracy)
-        print(f"Epoch {epoch + 1} Training Loss: {train_loss:.4f}, Training Accuracy: {train_accuracy:.4f}")
 
-        valid_loss, valid_accuracy = evaluate_model(model, valid_dataloader, criterion, device, is_final=False)
-        valid_losses.append(valid_loss)
-        valid_accuracies.append(valid_accuracy)
-        print(f"Epoch {epoch + 1} Validation Loss: {valid_loss:.4f}, Validation Accuracy: {valid_accuracy:.4f}")
+        #train_loss for training
+        train_losses.append(avg_loss)
 
-    print("Training Finished. Training Set Evaluation:")
-    evaluate_model(model, train_dataloader, criterion, device, is_final=True)
+        #kl for train and val
+        train_kls.append(train_kl)
+        val_kls.append(val_kl)
 
-    print("Validation Set Final Evaluation:")
-    evaluate_model(model, valid_dataloader, criterion, device, is_final=True)
+        #expected_accuracy for train and val
+        train_expected_accuracies.append(train_acc)
+        val_expected_accuracies.append(val_acc)
 
-    print("Test Set Evaluation:")
-    evaluate_model(model, test_dataloader, criterion, device, is_final=True)
+        #mse for train and val
+        train_mses.append(train_mse)
+        val_mses.append(val_mse)
 
-    # 训练过程可视化
-    plt.figure(figsize=(12, 12))
+        #print(f"Epoch [{epoch+1}/{num_epochs}] Loss: {running_loss:.4f}")
 
-    # 绘制损失曲线
-    plt.subplot(2, 1, 1)
-    plt.plot(train_losses, label='Training Loss', color='blue')
-    plt.plot(valid_losses, label='Validation Loss', color='red')
-    plt.title('Training and Validation Loss')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.legend()
+        # 重复输出了validation，可以删掉
+        # # 每轮都在验证集上评估
+        # evaluate_model(model, val_loader, device, name="Validation")
 
-    # 绘制准确率曲线
-    plt.subplot(2, 1, 2)
-    plt.plot(train_accuracies, label='Training Accuracy', color='blue')
-    plt.plot(valid_accuracies, label='Validation Accuracy', color='red')
-    plt.title('Training and Validation Accuracy')
-    plt.xlabel('Epochs')
-    plt.ylabel('Accuracy')
-    plt.legend()
+    # 训练完成后在测试集评估
+    test_kl, test_acc, test_mse = evaluate_model(model, test_loader, device, name="Test")
 
-    plt.show()
-
+    #绘制train,validation,test的图
+    plot_training_curves(train_losses, train_kls, val_kls,
+                         train_expected_accuracies, val_expected_accuracies,
+                         train_mses, val_mses)
+    plot_test_curve(test_kl, test_acc, test_mse)
 
 if __name__ == "__main__":
     main()
