@@ -12,7 +12,7 @@ import seaborn as sns
 import model_efficientnet as model_class
 import torchvision.models as models
 from torchvision.models.resnet import ResNet, BasicBlock
-import model_cdnn as model_class # 你提供的模型文件
+#import model_cdnn as model_class # 你提供的模型文件
 # import model_vgg  as model_class
 # import model_resnet  as model_class
 
