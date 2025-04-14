@@ -5,6 +5,9 @@ from torchvision.models import VGG16_BN_Weights
 class VGG(nn.Module):
     def __init__(self, num_classes=9):  # FER+ 有 9 个情绪类别
         super(VGG, self).__init__()
+        self.batch_size = 64
+        self.lr = 0.001
+        self.epoch = 10
 
         #下面这个写法是旧写法，这样写会报warning
         #self.base = models.vgg16_bn(pretrained=True)  # 加载 VGG16 带 BN

@@ -1,31 +1,20 @@
-import model_resnet
 from PIL import Image
 import os
-import seaborn as sns
 import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.metrics import confusion_matrix
-import matplotlib.pyplot as plt
-import pandas as pd
-import numpy as np
-import torch
-from torch.utils.data import Dataset, DataLoader
-import torch.nn as nn
-import torch.optim as optim
-import model_cdnn  # 你提供的模型文件
-#import model_vgg
-import model_efficientnet
-import model_vgg
-import model_resnet
 from sklearn.metrics import accuracy_score, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
+import model_efficientnet as model_class
 import torchvision.models as models
 from torchvision.models.resnet import ResNet, BasicBlock
+import model_cdnn as model_class # 你提供的模型文件
+# import model_vgg  as model_class
+# import model_resnet  as model_class
 
 # 将 fer2013.csv 转换为图片保存
 def save_images_as_png(fer_df, output_dir):
@@ -130,6 +119,7 @@ def evaluate_model(model, data_loader, device, name="Validation"):
 
     return avg_kl, avg_expected_acc, avg_mse
 
+# train模型可视化
 def plot_training_curves(train_losses,
                          train_kls, val_kls,
                          train_expected_accuracies, val_expected_accuracies,
@@ -179,6 +169,7 @@ def plot_training_curves(train_losses,
     plt.grid(True)
     plt.show()
 
+# test模型可视化
 def plot_test_curve(test_kl, test_acc, test_mse):
     metrics = ['KL Divergence', 'Expected Accuracy', 'MSE']
     values = [test_kl, test_acc, test_mse]
@@ -195,37 +186,8 @@ def plot_test_curve(test_kl, test_acc, test_mse):
     plt.show()
 
 
-# 主函数
-def main():
-    fer_path = '../data/fer2013_softlabel.csv'  # 包含soft labels的csv
-    train_dataset = FERPlusDataset(fer_path, usage='Training')
-    val_dataset = FERPlusDataset(fer_path, usage='PublicTest')
-    test_dataset = FERPlusDataset(fer_path, usage='PrivateTest')
-
-    # train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-    # val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
-    # test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
-    train_loader = DataLoader(train_dataset, batch_size=model_resnet.ResNet().batch_size, shuffle=True)    # ResNet_CBAM()
-    val_loader = DataLoader(val_dataset, batch_size=model_resnet.ResNet().batch_size, shuffle=False)       # ResNet_CBAM()
-    test_loader = DataLoader(test_dataset, batch_size=model_resnet.ResNet().batch_size, shuffle=False)     # ResNet_CBAM()
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    #model = model_vgg.VGG().to(device)
-    model = model_efficientnet.EfficientNetSoftLabel().to(device)
-    # model = model_vgg.VGG().to(device)
-
-    model = model_resnet.ResNet().to(device)
-
-
-
-    # criterion = nn.KLDivLoss(reduction='batchmean')
-    # softmax = nn.LogSoftmax(dim=1)
-    # optimizer = optim.Adam(model.parameters(), lr=0.001)
-    criterion = nn.KLDivLoss(reduction='batchmean')
-    softmax = nn.LogSoftmax(dim=1)
-    optimizer = optim.Adam(model.parameters(), lr=model_resnet.ResNet().lr)    # ResNet_CBAM()
-
-    #预设存储的变量，用于画图
+# 训练模型
+def train_model(model, train_loader, val_loader, optimizer, criterion, softmax, device, num_epochs):
     train_losses = []
     train_kls = []
     val_kls = []
@@ -233,11 +195,6 @@ def main():
     val_expected_accuracies = []
     train_mses = []
     val_mses = []
-
-    #设定epoch
-    # num_epochs = 10
-    #设定epoch
-    num_epochs = model_resnet.ResNet().epoch    # ResNet_CBAM()
 
     for epoch in range(num_epochs):
         model.train()
@@ -251,44 +208,73 @@ def main():
             optimizer.step()
             running_loss += loss.item()
         avg_loss = running_loss / len(train_loader)
-
-        # 用每轮平均loss表示loss，输出平均loss
         print(f"Epoch [{epoch + 1}/{num_epochs}] Avg Training KL Loss: {avg_loss:.4f}")
 
-        #获得kl, expect acc, mse, 输出结果
         train_kl, train_acc, train_mse = evaluate_model(model, train_loader, device, name="Train")
         val_kl, val_acc, val_mse = evaluate_model(model, val_loader, device, name="Validation")
 
-
-        #train_loss for training
         train_losses.append(avg_loss)
-
-        #kl for train and val
         train_kls.append(train_kl)
         val_kls.append(val_kl)
-
-        #expected_accuracy for train and val
         train_expected_accuracies.append(train_acc)
         val_expected_accuracies.append(val_acc)
-
-        #mse for train and val
         train_mses.append(train_mse)
         val_mses.append(val_mse)
 
-        #print(f"Epoch [{epoch+1}/{num_epochs}] Loss: {running_loss:.4f}")
+    return model, train_losses, train_kls, val_kls, train_expected_accuracies, val_expected_accuracies, train_mses, val_mses
 
-        # 重复输出了validation，可以删掉
-        # # 每轮都在验证集上评估
-        # evaluate_model(model, val_loader, device, name="Validation")
+# 初始化权重
+def init_weights(m):
+    if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+        nn.init.kaiming_normal_(m.weight)
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
 
-    # 训练完成后在测试集评估
+
+def main():
+    fer_path = '../data/fer2013_softlabel.csv'
+    train_dataset = FERPlusDataset(fer_path, usage='Training')
+    val_dataset = FERPlusDataset(fer_path, usage='PublicTest')
+    test_dataset = FERPlusDataset(fer_path, usage='PrivateTest')
+
+    batch_size = model_class.VGG13_PyTorch().batch_size
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # 01. 调用cdnn9层神经网络
+    # model = model_cdnn.NineLayerCNN().to(device)
+    # 02. 调用cdnn12层神经网络
+    # model = model_cdnn.TwelveLayerCNN().to(device)
+    # 03. 手动构建vgg
+    model = model_class.VGG13_PyTorch().to(device)
+
+    # 04. vgg
+    # model = model_vgg.VGG().to(device)
+    # 05. resnet
+    # model = model_resnet.ResNet().to(device)
+
+
+    model.apply(init_weights)
+
+    softmax = nn.LogSoftmax(dim=1)
+    criterion = nn.KLDivLoss(reduction='batchmean')
+    optimizer = optim.Adam(model.parameters(), lr=model_class.VGG13_PyTorch().lr)
+    num_epochs = model_class.VGG13_PyTorch().epoch
+
+    # 抽取后的训练过程调用
+    model, train_losses, train_kls, val_kls, train_expected_accuracies, val_expected_accuracies, train_mses, val_mses = \
+        train_model(model, train_loader, val_loader, optimizer, criterion, softmax, device, num_epochs)
+
+    # 测试集评估 & 可视化
     test_kl, test_acc, test_mse = evaluate_model(model, test_loader, device, name="Test")
-
-    #绘制train,validation,test的图
     plot_training_curves(train_losses, train_kls, val_kls,
                          train_expected_accuracies, val_expected_accuracies,
                          train_mses, val_mses)
     plot_test_curve(test_kl, test_acc, test_mse)
+
 
 if __name__ == "__main__":
     main()
