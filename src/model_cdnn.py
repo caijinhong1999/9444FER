@@ -1,95 +1,149 @@
 import torch
 import torch.nn as nn
-# 构建 9 层卷积神经网络
+# Define a 9-layer Convolutional Neural Network
 class NineLayerCNN(nn.Module):
     def __init__(self, num_classes=9):
         super(NineLayerCNN, self).__init__()
         self.batch_size = 64
         self.lr = 0.001
         self.epoch = 10
+
+        # 6 convolutional layers
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(32)  # ✅ BN 加在卷积后
-        self.relu1 = nn.ReLU()
+        self.bn1 = nn.BatchNorm2d(32)
+        self.conv2 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(32)
         self.pool1 = nn.MaxPool2d(2)
 
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(64)
-        self.relu2 = nn.ReLU()
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm2d(64)
+        self.conv4 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        self.bn4 = nn.BatchNorm2d(64)
         self.pool2 = nn.MaxPool2d(2)
 
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
-        self.bn3 = nn.BatchNorm2d(128)
-        self.relu3 = nn.ReLU()
+        self.conv5 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+        self.bn5 = nn.BatchNorm2d(128)
+        self.conv6 = nn.Conv2d(128, 128, kernel_size=3, padding=1)
+        self.bn6 = nn.BatchNorm2d(128)
         self.pool3 = nn.MaxPool2d(2)
 
         self.flatten = nn.Flatten()
-        self.fc1 = nn.Linear(128 * 6 * 6, 128)
-        self.bn4 = nn.BatchNorm1d(128)  # ✅ BN 加在 FC 后
-        self.relu4 = nn.ReLU()
-        self.fc2 = nn.Linear(128, num_classes)
+
+        # After 3 pooling layers, the feature map size is 6x6 (assuming input is 48x48)
+        self.fc1 = nn.Linear(128 * 6 * 6, 256)
+        self.bn_fc1 = nn.BatchNorm1d(256)
+        self.fc2 = nn.Linear(256, 128)
+        self.bn_fc2 = nn.BatchNorm1d(128)
+        self.fc3 = nn.Linear(128, num_classes)
+
+        self.relu = nn.ReLU()
 
     def forward(self, x):
-        x = self.pool1(self.relu1(self.bn1(self.conv1(x))))
-        x = self.pool2(self.relu2(self.bn2(self.conv2(x))))
-        x = self.pool3(self.relu3(self.bn3(self.conv3(x))))
+        # Block 1
+        x = self.relu(self.bn1(self.conv1(x)))
+        x = self.relu(self.bn2(self.conv2(x)))
+        x = self.pool1(x)
+
+        # Block 2
+        x = self.relu(self.bn3(self.conv3(x)))
+        x = self.relu(self.bn4(self.conv4(x)))
+        x = self.pool2(x)
+
+        # Block 3
+        x = self.relu(self.bn5(self.conv5(x)))
+        x = self.relu(self.bn6(self.conv6(x)))
+        x = self.pool3(x)
+
         x = self.flatten(x)
-        x = self.relu4(self.bn4(self.fc1(x)))
-        x = self.fc2(x)
+
+        # Fully connected layers
+        x = self.relu(self.bn_fc1(self.fc1(x)))
+        x = self.relu(self.bn_fc2(self.fc2(x)))
+        x = self.fc3(x)
+
         return x
 
 
-# 构建 12 层卷积神经网络
+# build 12 layers CNN
 class TwelveLayerCNN(nn.Module):
     def __init__(self, num_classes=9):
         super(TwelveLayerCNN, self).__init__()
         self.batch_size = 64
-        self.lr = 0.001
-        self.epoch = 10
-        # 第一层卷积块
+        self.lr = 0.1
+        self.epoch = 20
+
+        # Block 1: Conv1 ~ Conv3
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(32)
-        self.relu1 = nn.ReLU()
+        self.conv2 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
         self.pool1 = nn.MaxPool2d(2)
+        self.bn1 = nn.BatchNorm2d(32)
+        self.drop1 = nn.Dropout2d(p=0.2)
 
-        # 第二层卷积块
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(64)
-        self.relu2 = nn.ReLU()
+        # Block 2: Conv4 ~ Conv6
+        self.conv4 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.conv5 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        self.conv6 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
         self.pool2 = nn.MaxPool2d(2)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.drop2 = nn.Dropout2d(p=0.2)
 
-        # 第三层卷积块
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
-        self.bn3 = nn.BatchNorm2d(128)
-        self.relu3 = nn.ReLU()
+        # Block 3: Conv7 ~ Conv9
+        self.conv7 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+        self.conv8 = nn.Conv2d(128, 128, kernel_size=3, padding=1)
+        self.conv9 = nn.Conv2d(128, 128, kernel_size=3, padding=1)
         self.pool3 = nn.MaxPool2d(2)
-
-        # 第四层卷积块
-        self.conv4 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
-        self.bn4 = nn.BatchNorm2d(256)
-        self.relu4 = nn.ReLU()
-        self.pool4 = nn.MaxPool2d(2)
+        self.bn3 = nn.BatchNorm2d(128)
+        self.drop3 = nn.Dropout2d(p=0.2)
 
         self.flatten = nn.Flatten()
 
-        self.fc1 = nn.Linear(256 * 3 * 3, 256)
-        self.bn5 = nn.BatchNorm1d(256)
-        self.relu5 = nn.ReLU()
+        # After 3 poolings: 6×6
+        self.fc1 = nn.Linear(128 * 6 * 6, 256)
+        self.bn_fc1 = nn.BatchNorm1d(256)
+        self.drop_fc1 = nn.Dropout(p=0.5)
 
         self.fc2 = nn.Linear(256, 128)
-        self.bn6 = nn.BatchNorm1d(128)
-        self.relu6 = nn.ReLU()
+        self.bn_fc2 = nn.BatchNorm1d(128)
+        self.drop_fc2 = nn.Dropout(p=0.5)
 
         self.fc3 = nn.Linear(128, num_classes)
 
+        self.relu = nn.ReLU()
+
     def forward(self, x):
-        x = self.pool1(self.relu1(self.bn1(self.conv1(x))))
-        x = self.pool2(self.relu2(self.bn2(self.conv2(x))))
-        x = self.pool3(self.relu3(self.bn3(self.conv3(x))))
-        x = self.pool4(self.relu4(self.bn4(self.conv4(x))))
+        # Block 1
+        x = self.relu(self.conv1(x))
+        x = self.relu(self.conv2(x))
+        x = self.relu(self.conv3(x))
+        x = self.pool1(x)
+        x = self.bn1(x)
+        x = self.drop1(x)
+
+        # Block 2
+        x = self.relu(self.conv4(x))
+        x = self.relu(self.conv5(x))
+        x = self.relu(self.conv6(x))
+        x = self.pool2(x)
+        x = self.bn2(x)
+        x = self.drop2(x)
+
+        # Block 3
+        x = self.relu(self.conv7(x))
+        x = self.relu(self.conv8(x))
+        x = self.relu(self.conv9(x))
+        x = self.pool3(x)
+        x = self.bn3(x)
+        x = self.drop3(x)
+
         x = self.flatten(x)
-        x = self.relu5(self.bn5(self.fc1(x)))
-        x = self.relu6(self.bn6(self.fc2(x)))
+
+        x = self.relu(self.bn_fc1(self.fc1(x)))
+        x = self.drop_fc1(x)
+        x = self.relu(self.bn_fc2(self.fc2(x)))
+        x = self.drop_fc2(x)
         x = self.fc3(x)
+
         return x
 
 # 综上所述，这个 VGG13_PyTorch 模型包含 10 层卷积层、4 层池化层、3 层全连接层和 6 层 Dropout 层。
@@ -107,9 +161,8 @@ class VGG13_PyTorch(nn.Module):
     def __init__(self, num_classes=9):
         super(VGG13_PyTorch, self).__init__()
         self.batch_size = 64
-        self.lr = 0.001
-        self.epoch = 10
-        self.learning_rate = 0.05
+        self.lr = 0.1
+        self.epoch = 30
         self.input_width = 48
         self.input_height = 48
         self.input_channels = 1
@@ -118,7 +171,7 @@ class VGG13_PyTorch(nn.Module):
         self.classifier = None
         self.num_classes = num_classes
 
-        # 动态计算全连接层的输入维度
+        # 1. Dynamically computing the input dimension of fully connected layers
         test_input = torch.randn(1, self.input_channels, self.input_height, self.input_width)
         with torch.no_grad():
             output = self.features(test_input)
@@ -128,21 +181,21 @@ class VGG13_PyTorch(nn.Module):
     def _create_features(self):
         layers = []
         in_channels = self.input_channels
-        # 第一个循环部分
+        # The first loop section
         for i, out_channels in enumerate([64, 128]):
             for _ in range(2):
                 layers.append(nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
-                layers.append(nn.BatchNorm2d(out_channels)) # 批量归一化
+                layers.append(nn.BatchNorm2d(out_channels)) # Batch normalization
                 layers.append(nn.ReLU(inplace=True))
                 in_channels = out_channels
             layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
             layers.append(nn.Dropout(0.25))
 
-        # 第二个循环部分
+        # The second loop section
         for i, out_channels in enumerate([256, 256]):
             for _ in range(3):
                 layers.append(nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
-                layers.append(nn.BatchNorm2d(out_channels))  # 批量归一化
+                layers.append(nn.BatchNorm2d(out_channels))  # Batch normalization
                 layers.append(nn.ReLU(inplace=True))
                 in_channels = out_channels
             layers.append(nn.MaxPool2d(kernel_size=2, stride=2))

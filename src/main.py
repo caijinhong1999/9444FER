@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import torchvision.models as models
 from torchvision.models.resnet import ResNet, BasicBlock
+import torchvision.transforms as transforms
+
 import model_cdnn as model_class # 你提供的模型文件
 # import model_vgg  as model_class
 # import model_resnet  as model_class
@@ -31,14 +33,14 @@ def save_images_as_png(fer_df, output_dir):
 class FERPlusDataset(Dataset):
     def __init__(self, csv_file, usage='Training', transform=None):
         self.data = pd.read_csv(csv_file)
-        self.data.columns = self.data.columns.str.strip()  # 清除列名空格
+        self.data.columns = self.data.columns.str.strip()  # clear the empty coloum
         self.data = self.data[self.data['Usage'] == usage]
 
-        # 排除 unknown 和 NF 分布不为 0 的行（可选）
-        self.data = self.data[(self.data['NF'] == 0) & (self.data['unknown'] <= 1)]
+        # drop NF
+        self.data = self.data[(self.data['NF'] == 0)]
 
         self.label_keys = ['neutral', 'happiness', 'surprise', 'sadness',
-                           'anger', 'disgust', 'fear', 'contempt', 'unknown']   #9种class
+                           'anger', 'disgust', 'fear', 'contempt', 'unknown']   #9 class
         self.transform = transform
 
     def __len__(self):
@@ -46,20 +48,36 @@ class FERPlusDataset(Dataset):
 
     def __getitem__(self, idx):
         row = self.data.iloc[idx]
+
+        # 原始图像数据处理
         image = np.fromstring(row['pixels'], dtype=int, sep=' ').astype(np.uint8).reshape(48, 48)
-        image = image.astype(np.float32) / 255.0
-        image = torch.tensor(image).unsqueeze(0)
+        image = Image.fromarray(image)  # ✅ 转 PIL
 
+        if self.transform:
+            image = self.transform(image)  # transform 会自动处理 to_tensor 等
+        else:
+            image = torch.tensor(np.array(image), dtype=torch.float32).unsqueeze(0) / 255.0
 
+        # 标签处理
         label = row[self.label_keys].values.astype(np.float32)
         label = label / label.sum()  # soft label 归一化
         label = torch.tensor(label)
 
-        if self.transform:
-            image = self.transform(image)
-
         return image, label
 
+# Augmentations for training set
+train_transform = transforms.Compose([
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomCrop(48, padding=4),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5], std=[0.5])
+])
+
+# Standard transform for validation and test
+eval_transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5], std=[0.5])
+])
 
 # 混淆矩阵可视化
 def plot_confusion_matrix(y_true, y_pred, title='Confusion Matrix'):
@@ -232,9 +250,9 @@ def init_weights(m):
 
 def main():
     fer_path = '../data/fer2013_softlabel.csv'
-    train_dataset = FERPlusDataset(fer_path, usage='Training')
-    val_dataset = FERPlusDataset(fer_path, usage='PublicTest')
-    test_dataset = FERPlusDataset(fer_path, usage='PrivateTest')
+    train_dataset = FERPlusDataset(fer_path, usage='Training', transform=train_transform)
+    val_dataset = FERPlusDataset(fer_path, usage='PublicTest', transform=eval_transform)
+    test_dataset = FERPlusDataset(fer_path, usage='PrivateTest', transform=eval_transform)
 
     batch_size = model_class.VGG13_PyTorch().batch_size
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -244,9 +262,9 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # 01. 调用cdnn9层神经网络
-    # model = model_cdnn.NineLayerCNN().to(device)
+    # model = model_class.NineLayerCNN().to(device)
     # 02. 调用cdnn12层神经网络
-    # model = model_cdnn.TwelveLayerCNN().to(device)
+    # model = model_class.TwelveLayerCNN().to(device)
     # 03. 手动构建vgg
     model = model_class.VGG13_PyTorch().to(device)
 
