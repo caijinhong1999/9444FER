@@ -69,7 +69,7 @@ class TwelveLayerCNN(nn.Module):
     def __init__(self, num_classes=9):
         super(TwelveLayerCNN, self).__init__()
         self.batch_size = 64
-        self.lr = 0.1
+        self.lr = 0.001
         self.epoch = 20
 
         # Block 1: Conv1 ~ Conv3
@@ -161,7 +161,7 @@ class VGG13_PyTorch(nn.Module):
     def __init__(self, num_classes=9):
         super(VGG13_PyTorch, self).__init__()
         self.batch_size = 64
-        self.lr = 0.1
+        self.lr = 0.001
         self.epoch = 30
         self.input_width = 48
         self.input_height = 48
