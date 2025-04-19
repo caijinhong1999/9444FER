@@ -1,3 +1,4 @@
+import random
 from PIL import Image
 import os
 import pandas as pd
@@ -6,16 +7,15 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
-import torchvision.models as models
-from torchvision.models.resnet import ResNet, BasicBlock
 import torchvision.transforms as transforms
 
-import model_cdnn as model_class # 你提供的模型文件
-# import model_vgg  as model_class
-# import model_resnet  as model_class
+from src.model_cdnn import NineLayerCNN as NineLayerCNN;
+from src.model_cdnn import TwelveLayerCNN as TwelveLayerCNN;
+from src.model_cdnn import VGG13_PyTorch as VGG13_PyTorch;
+
 
 # 将 fer2013.csv 转换为图片保存
 def save_images_as_png(fer_df, output_dir):
@@ -29,6 +29,7 @@ def save_images_as_png(fer_df, output_dir):
         img_path = os.path.join(output_dir, f"image_{i}.png")
         img.save(img_path)
 
+
 # 自定义数据集类
 class FERPlusDataset(Dataset):
     def __init__(self, csv_file, usage='Training', transform=None):
@@ -40,7 +41,7 @@ class FERPlusDataset(Dataset):
         self.data = self.data[(self.data['NF'] == 0)]
 
         self.label_keys = ['neutral', 'happiness', 'surprise', 'sadness',
-                           'anger', 'disgust', 'fear', 'contempt', 'unknown']   #9 class
+                           'anger', 'disgust', 'fear', 'contempt', 'unknown']  # 9 class
         self.transform = transform
 
     def __len__(self):
@@ -65,6 +66,7 @@ class FERPlusDataset(Dataset):
 
         return image, label
 
+
 # Augmentations for training set
 train_transform = transforms.Compose([
     transforms.RandomHorizontalFlip(p=0.5),
@@ -79,6 +81,7 @@ eval_transform = transforms.Compose([
     transforms.Normalize(mean=[0.5], std=[0.5])
 ])
 
+
 # 混淆矩阵可视化
 def plot_confusion_matrix(y_true, y_pred, title='Confusion Matrix'):
     cm = confusion_matrix(y_true, y_pred)
@@ -88,6 +91,7 @@ def plot_confusion_matrix(y_true, y_pred, title='Confusion Matrix'):
     plt.ylabel("True")
     plt.title(title)
     plt.show()
+
 
 # 评估模型
 def evaluate_model(model, data_loader, device, name="Validation"):
@@ -136,12 +140,13 @@ def evaluate_model(model, data_loader, device, name="Validation"):
 
     return avg_kl, avg_expected_acc, avg_mse
 
+
 # train模型可视化
 def plot_training_curves(train_losses,
                          train_kls, val_kls,
                          train_expected_accuracies, val_expected_accuracies,
                          train_mses, val_mses):
-    epochs = list(range(1, len(train_losses)+1))
+    epochs = list(range(1, len(train_losses) + 1))
 
     # 1. Train KL Loss vs Val KL Loss
     plt.figure(figsize=(8, 6))
@@ -186,6 +191,7 @@ def plot_training_curves(train_losses,
     plt.grid(True)
     plt.show()
 
+
 # test模型可视化
 def plot_test_curve(test_kl, test_acc, test_mse):
     metrics = ['KL Divergence', 'Expected Accuracy', 'MSE']
@@ -195,10 +201,10 @@ def plot_test_curve(test_kl, test_acc, test_mse):
     bars = plt.bar(metrics, values)
     for bar in bars:
         yval = bar.get_height()
-        plt.text(bar.get_x() + bar.get_width()/2.0, yval + 0.005, f'{yval:.4f}', ha='center', va='bottom')
+        plt.text(bar.get_x() + bar.get_width() / 2.0, yval + 0.005, f'{yval:.4f}', ha='center', va='bottom')
 
     plt.title("Test Set Evaluation Metrics")
-    plt.ylim(0, max(values)*1.2)
+    plt.ylim(0, max(values) * 1.2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.show()
 
@@ -240,6 +246,7 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, softmax, 
 
     return model, train_losses, train_kls, val_kls, train_expected_accuracies, val_expected_accuracies, train_mses, val_mses
 
+
 # 初始化权重
 def init_weights(m):
     if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
@@ -248,13 +255,14 @@ def init_weights(m):
             nn.init.constant_(m.bias, 0)
 
 
-def main():
+def main(name):
+    set_seed(42)
     fer_path = '../data/fer2013_softlabel.csv'
     train_dataset = FERPlusDataset(fer_path, usage='Training', transform=train_transform)
     val_dataset = FERPlusDataset(fer_path, usage='PublicTest', transform=eval_transform)
     test_dataset = FERPlusDataset(fer_path, usage='PrivateTest', transform=eval_transform)
 
-    batch_size = model_class.TwelveLayerCNN().batch_size
+    batch_size = get_model(name).batch_size
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
@@ -262,24 +270,23 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # 01. 调用cdnn9层神经网络
-    # model = model_class.NineLayerCNN().to(device)
+    model = get_model(name).to(device)
     # 02. 调用cdnn12层神经网络
-    model = model_class.TwelveLayerCNN().to(device)
+    # model = model_class.TwelveLayerCNN().to(device)
     # 03. 手动构建vgg
-    # model = model_class.VGG13_PyTorch().to(device)
+    model = get_model(name).to(device)
 
     # 04. vgg
     # model = model_vgg.VGG().to(device)
     # 05. resnet
     # model = model_resnet.ResNet().to(device)
 
-
     model.apply(init_weights)
 
     softmax = nn.LogSoftmax(dim=1)
     criterion = nn.KLDivLoss(reduction='batchmean')
-    optimizer = optim.Adam(model.parameters(), lr=model_class.TwelveLayerCNN().lr)
-    num_epochs = model_class.TwelveLayerCNN().epoch
+    optimizer = optim.Adam(model.parameters(), lr=get_model(name).lr)
+    num_epochs = get_model(name).epoch
 
     # 抽取后的训练过程调用
     model, train_losses, train_kls, val_kls, train_expected_accuracies, val_expected_accuracies, train_mses, val_mses = \
@@ -293,5 +300,23 @@ def main():
     plot_test_curve(test_kl, test_acc, test_mse)
 
 
+def get_model(name):
+    if name == 'NineLayerCNN':
+        return NineLayerCNN()
+    elif name == 'TwelveLayerCNN':
+        return TwelveLayerCNN()
+    elif name == 'VGG13_PyTorch':
+        return VGG13_PyTorch()
+
+
+def set_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True  # Mandatory use of deterministic algorithms
+    torch.backends.cudnn.benchmark = False     # Disable automatic optimization
+
 if __name__ == "__main__":
-    main()
+    main('TwelveLayerCNN')

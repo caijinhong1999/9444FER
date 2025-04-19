@@ -11,7 +11,6 @@ class NineLayerCNN(nn.Module):
         # Block 1
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
-        self.pool1 = nn.MaxPool2d(2)
 
         # Block 2
         self.conv3 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
@@ -24,17 +23,17 @@ class NineLayerCNN(nn.Module):
 
         self.flatten = nn.Flatten()
 
-        self.fc1 = nn.Linear(128 * 12 * 12, 256)
+        self.fc1 = nn.Linear(128 * 24 * 24, 256)
         self.fc2 = nn.Linear(256, 128)
         self.fc3 = nn.Linear(128, num_classes)
 
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        # Block 1
+        # Block 1 (no pooling)
         x = self.conv1(x)
         x = self.relu(self.conv2(x))
-        x = self.pool1(x)
+        # Removed: x = self.pool1(x)
 
         # Block 2
         x = self.conv3(x)
@@ -60,7 +59,7 @@ class TwelveLayerCNN(nn.Module):
         super(TwelveLayerCNN, self).__init__()
         self.batch_size = 64
         self.lr = 0.001
-        self.epoch = 20
+        self.epoch = 10
 
         # Block 1: Conv1 ~ Conv3
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
@@ -135,8 +134,6 @@ class TwelveLayerCNN(nn.Module):
         x = self.fc3(x)
 
         return x
-
-# 综上所述，这个 VGG13_PyTorch 模型包含 10 层卷积层、4 层池化层、3 层全连接层和 6 层 Dropout 层。
 
 # @inproceedings{BarsoumICMI2016,
 #     title={Training Deep Networks for Facial Expression Recognition with Crowd-Sourced Label Distribution},
