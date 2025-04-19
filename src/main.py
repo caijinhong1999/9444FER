@@ -254,7 +254,7 @@ def main():
     val_dataset = FERPlusDataset(fer_path, usage='PublicTest', transform=eval_transform)
     test_dataset = FERPlusDataset(fer_path, usage='PrivateTest', transform=eval_transform)
 
-    batch_size = model_class.VGG13_PyTorch().batch_size
+    batch_size = model_class.TwelveLayerCNN().batch_size
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
@@ -264,9 +264,9 @@ def main():
     # 01. 调用cdnn9层神经网络
     # model = model_class.NineLayerCNN().to(device)
     # 02. 调用cdnn12层神经网络
-    # model = model_class.TwelveLayerCNN().to(device)
+    model = model_class.TwelveLayerCNN().to(device)
     # 03. 手动构建vgg
-    model = model_class.VGG13_PyTorch().to(device)
+    # model = model_class.VGG13_PyTorch().to(device)
 
     # 04. vgg
     # model = model_vgg.VGG().to(device)
@@ -278,8 +278,8 @@ def main():
 
     softmax = nn.LogSoftmax(dim=1)
     criterion = nn.KLDivLoss(reduction='batchmean')
-    optimizer = optim.Adam(model.parameters(), lr=model_class.VGG13_PyTorch().lr)
-    num_epochs = model_class.VGG13_PyTorch().epoch
+    optimizer = optim.Adam(model.parameters(), lr=model_class.TwelveLayerCNN().lr)
+    num_epochs = model_class.TwelveLayerCNN().epoch
 
     # 抽取后的训练过程调用
     model, train_losses, train_kls, val_kls, train_expected_accuracies, val_expected_accuracies, train_mses, val_mses = \
